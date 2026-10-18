@@ -1,0 +1,693 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>QueueFlow · Console</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Doto:wght@700;900&family=JetBrains+Mono:wght@400;600&family=Public+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --mineral: #E7EAEE;
+    --paper: #F7F8FA;
+    --ink: #172433;
+    --ink-soft: #55657A;
+    --line: #CDD3DB;
+    --board: #14243A;
+    --signal: #F4C430;
+    --called: #D2452F;
+    --serving: #1E7A6C;
+    --done: #8A96A6;
+    --radius: 6px;
+    --display: "Doto", ui-monospace, monospace;
+    --body: "Public Sans", system-ui, sans-serif;
+    --mono: "JetBrains Mono", ui-monospace, monospace;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--mineral); color: var(--ink); font: 15px/1.45 var(--body); }
+  button, input, select { font: inherit; color: inherit; }
+  :focus-visible { outline: 3px solid var(--signal); outline-offset: 2px; }
+  .wrap { max-width: 1240px; margin: 0 auto; padding: 0 16px 48px; }
+
+  /* ---- topo ------------------------------------------------------------------- */
+  .top { display: flex; align-items: center; gap: 16px; padding: 14px 0; flex-wrap: wrap; }
+  .brand { font-weight: 700; letter-spacing: .02em; }
+  .brand small { font-weight: 500; color: var(--ink-soft); margin-left: 6px; }
+  .top .spacer { flex: 1; }
+  .queue-name { font-weight: 600; }
+  .pill { font: 600 12px/1 var(--mono); text-transform: uppercase; letter-spacing: .06em; padding: 5px 8px;
+          border-radius: 999px; border: 1px solid currentColor; }
+  .policy { font: 12px var(--mono); color: var(--ink-soft); }
+  .pill.ACTIVE { color: var(--serving); } .pill.PAUSED { color: #A86A00; } .pill.CLOSED { color: var(--done); }
+
+  /* ---- botões ----------------------------------------------------------------- */
+  .btn { border: 1px solid var(--ink); background: var(--ink); color: var(--paper); padding: 8px 14px;
+         border-radius: var(--radius); font-weight: 600; cursor: pointer; }
+  .btn:hover { background: #24384F; }
+  .btn.ghost { background: transparent; color: var(--ink); border-color: var(--line); }
+  .btn.ghost:hover { border-color: var(--ink); }
+  .btn.signal { background: var(--signal); border-color: var(--signal); color: var(--ink); }
+  .btn.signal:hover { background: #FFD24D; }
+  .btn.warn { background: transparent; color: var(--called); border-color: var(--called); }
+  .btn.small { padding: 4px 9px; font-size: 13px; }
+  .btn:disabled { opacity: .45; cursor: not-allowed; }
+
+  /* ---- painel (assinatura) ---------------------------------------------------- */
+  .board { background: var(--board); color: var(--signal); border-radius: 10px; padding: 22px 26px;
+           display: grid; grid-template-columns: 2.2fr 1fr; gap: 24px; position: relative; overflow: hidden; }
+  .board::after { /* grade de LEDs */
+    content: ""; position: absolute; inset: 0; pointer-events: none; opacity: .18;
+    background-image: radial-gradient(circle, rgba(244,196,48,.55) 0.8px, transparent 1.2px);
+    background-size: 6px 6px; }
+  .board .label { font: 600 11px/1 var(--mono); letter-spacing: .18em; text-transform: uppercase; color: #8FA3BD; }
+  .now { display: flex; align-items: baseline; gap: 22px; flex-wrap: wrap; margin-top: 10px; }
+  .now .ticket { font: 900 clamp(56px, 9vw, 120px)/.9 var(--display); letter-spacing: .04em; }
+  .now .arrow { font: 700 clamp(28px, 4vw, 48px)/1 var(--display); color: #8FA3BD; }
+  .now .dest { font: 900 clamp(26px, 3.6vw, 46px)/1 var(--display); color: #FFF3C4; white-space: nowrap; }
+  .now.empty .ticket { color: #33496A; }
+  .now.flash { animation: flash 1.1s steps(2, jump-none) 3; }
+  @keyframes flash { 50% { opacity: .15; } }
+  .recent { list-style: none; margin: 12px 0 0; padding: 0; display: grid; gap: 6px; }
+  .recent li { display: flex; justify-content: space-between; font: 700 22px/1.2 var(--display); color: #C9A637;
+               border-bottom: 1px dashed #2A4061; padding-bottom: 4px; }
+  .recent li span:last-child { color: #8FA3BD; }
+  .metrics { grid-column: 1 / -1; display: flex; gap: 28px; flex-wrap: wrap; border-top: 1px solid #2A4061;
+             padding-top: 14px; color: #C8D3E2; font: 13px/1.3 var(--mono); }
+  .metrics b { display: block; font: 700 22px/1.1 var(--mono); color: #FFF3C4; }
+
+  /* ---- grade de estações ------------------------------------------------------ */
+  .stations { display: grid; grid-template-columns: 300px 1fr; gap: 16px; margin-top: 16px; align-items: start; }
+  .card { background: var(--paper); border: 1px solid var(--line); border-radius: 10px; padding: 18px; }
+  .card h2 { margin: 0 0 4px; font-size: 13px; letter-spacing: .12em; text-transform: uppercase; color: var(--ink-soft); }
+  .card .hint { margin: 0 0 14px; color: var(--ink-soft); font-size: 13px; }
+  .field { display: grid; gap: 4px; margin-bottom: 12px; font-size: 13px; font-weight: 600; }
+  .field input, .field select { border: 1px solid var(--line); border-radius: var(--radius); padding: 8px 10px;
+                                background: #fff; font-weight: 400; }
+  .check { display: flex; gap: 8px; align-items: center; font-size: 13px; margin-bottom: 14px; }
+  .operators { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 16px; }
+
+  /* ---- canhoto de papel térmico ----------------------------------------------- */
+  .stub { margin-top: 16px; background: #fff; padding: 16px 14px 18px; text-align: center; position: relative;
+          box-shadow: 0 1px 0 var(--line); animation: print .5s ease-out; }
+  .stub::before, .stub::after { content: ""; position: absolute; left: 0; right: 0; height: 8px;
+    background: radial-gradient(circle at 5px 0, transparent 4px, #fff 4.5px) 0 0 / 10px 8px repeat-x; }
+  .stub::before { top: -8px; transform: rotate(180deg); }
+  .stub::after { bottom: -8px; }
+  .stub .t { font: 900 54px/1 var(--display); letter-spacing: .05em; }
+  .stub .meta { font: 12px/1.5 var(--mono); color: var(--ink-soft); }
+  @keyframes print { from { clip-path: inset(0 0 100% 0); } to { clip-path: inset(0 0 0 0); } }
+
+  /* ---- operador --------------------------------------------------------------- */
+  .op-head { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; }
+  .op-head strong { font-size: 16px; }
+  .op-head span { font: 12px var(--mono); color: var(--ink-soft); }
+  .slot { margin: 14px 0; border: 1px dashed var(--line); border-radius: var(--radius); padding: 14px; min-height: 92px;
+          display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+  .slot .t { font: 900 40px/1 var(--display); }
+  .slot .idle { color: var(--ink-soft); font-size: 13px; }
+  .status { font: 600 11px/1 var(--mono); letter-spacing: .08em; text-transform: uppercase; padding: 4px 7px;
+            border-radius: 4px; color: #fff; background: var(--done); white-space: nowrap; }
+  .status.WAITING { background: var(--ink-soft); } .status.CALLED { background: var(--called); }
+  .status.IN_SERVICE { background: var(--serving); }
+  .timer { font: 12px var(--mono); color: var(--ink-soft); margin-top: 6px; }
+  .timer.late { color: var(--called); font-weight: 600; }
+  .actions { display: flex; flex-wrap: wrap; gap: 8px; }
+
+  /* ---- fila de espera --------------------------------------------------------- */
+  .waiting { margin-top: 16px; }
+  table { width: 100%; border-collapse: collapse; font-size: 14px; }
+  th { text-align: left; font: 600 11px var(--mono); letter-spacing: .1em; text-transform: uppercase; color: var(--ink-soft);
+       border-bottom: 1px solid var(--line); padding: 6px 8px; }
+  td { border-bottom: 1px solid #E3E7EC; padding: 8px; vertical-align: middle; }
+  td.pos { font: 600 13px var(--mono); color: var(--ink-soft); width: 40px; }
+  td.tk { font: 900 24px/1 var(--display); width: 110px; }
+  .prio { font: 600 12px var(--mono); }
+  .prio.lvl { color: var(--called); }
+  td.row-actions { text-align: right; white-space: nowrap; }
+  td.row-actions select { border: 1px solid var(--line); border-radius: var(--radius); padding: 3px 6px; font-size: 13px; background: #fff; }
+  .empty-row td { color: var(--ink-soft); text-align: center; padding: 22px; }
+  .table-scroll { overflow-x: auto; }
+
+  /* ---- registro de chamadas ---------------------------------------------------- */
+  details.log { margin-top: 16px; }
+  details.log summary { cursor: pointer; font-weight: 600; }
+  .log ol { list-style: none; margin: 10px 0 0; padding: 0; max-height: 260px; overflow: auto; font: 12px/1.6 var(--mono); }
+  .log li { display: grid; grid-template-columns: 70px 54px 1fr; gap: 8px; border-bottom: 1px solid #E3E7EC; }
+  .log .ok { color: var(--serving); } .log .err { color: var(--called); }
+
+  /* ---- mensagens --------------------------------------------------------------- */
+  .msg { font-size: 13px; margin-top: 10px; padding: 8px 10px; border-radius: var(--radius); border-left: 3px solid; }
+  .msg.err { background: #FBEDEA; border-color: var(--called); }
+  .msg.ok { background: #E7F3F0; border-color: var(--serving); }
+
+  /* ---- configuração inicial ---------------------------------------------------- */
+  .setup { max-width: 760px; margin: 40px auto 0; display: grid; gap: 16px; grid-template-columns: 1fr 1fr; }
+  .setup h1 { grid-column: 1 / -1; font: 900 44px/1 var(--display); margin: 0; color: var(--board); }
+  .setup p.lead { grid-column: 1 / -1; margin: 0; color: var(--ink-soft); }
+  [hidden] { display: none !important; }
+
+  @media (max-width: 860px) {
+    .board { grid-template-columns: 1fr; }
+    .stations { grid-template-columns: 1fr; }
+    .setup { grid-template-columns: 1fr; }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .now.flash, .stub { animation: none; }
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <!-- Configuração inicial ------------------------------------------------------------>
+  <section id="setup" class="setup" hidden>
+    <h1>QueueFlow</h1>
+    <p class="lead">Console de demonstração da API. Ele precisa de uma organização, uma fila e operadores para funcionar.</p>
+    <div class="card">
+      <h2>Ambiente novo</h2>
+      <p class="hint">Cria organização, unidade, serviço, fila com prioridades e dois guichês com atendentes.</p>
+      <div class="field"><label for="demo-name">Nome da organização</label>
+        <input id="demo-name" value="Clínica Demonstração"></div>
+      <button class="btn signal" id="btn-demo">Criar ambiente de demonstração</button>
+      <div id="setup-msg"></div>
+    </div>
+    <div class="card">
+      <h2>Ambiente existente</h2>
+      <p class="hint">Use os IDs de uma organização já cadastrada. O administrador precisa da permissão MANAGE_ORGANIZATION.</p>
+      <div class="field"><label for="ex-org">ID da organização</label><input id="ex-org" spellcheck="false"></div>
+      <div class="field"><label for="ex-admin">ID do administrador</label><input id="ex-admin" spellcheck="false"></div>
+      <div class="field"><label for="ex-queue">ID da fila</label><input id="ex-queue" spellcheck="false"></div>
+      <button class="btn" id="btn-connect">Conectar</button>
+      <div id="connect-msg"></div>
+    </div>
+  </section>
+
+  <!-- Console ---------------------------------------------------------------------------->
+  <main id="console" hidden>
+    <header class="top">
+      <span class="brand">QueueFlow<small>console</small></span>
+      <span class="queue-name" id="queue-name"></span>
+      <span class="pill" id="queue-status"></span>
+      <span class="policy" id="queue-policy"></span>
+      <span class="spacer"></span>
+      <button class="btn ghost small" id="btn-toggle-queue"></button>
+      <button class="btn ghost small" id="btn-add-op">Adicionar guichê</button>
+      <button class="btn ghost small" id="btn-reset">Trocar ambiente</button>
+    </header>
+
+    <section class="board" aria-live="polite">
+      <div>
+        <div class="label">Senha chamada</div>
+        <div class="now empty" id="now">
+          <span class="ticket" id="now-ticket">----</span>
+          <span class="arrow" id="now-arrow" hidden>&rarr;</span>
+          <span class="dest" id="now-dest"></span>
+        </div>
+      </div>
+      <div>
+        <div class="label">Chamadas anteriores</div>
+        <ul class="recent" id="recent"></ul>
+      </div>
+      <div class="metrics" id="metrics"></div>
+    </section>
+
+    <section class="stations">
+      <div class="card">
+        <h2>Totem</h2>
+        <p class="hint">Retire uma senha como a pessoa que chega ao balcão.</p>
+        <div class="field"><label for="k-priority">Atendimento</label><select id="k-priority"></select></div>
+        <div class="field"><label for="k-ref">Referência externa (opcional)</label>
+          <input id="k-ref" placeholder="Nº do pedido, prontuário…"></div>
+        <label class="check"><input type="checkbox" id="k-staff"> Emitir pela recepção (operador administrador)</label>
+        <button class="btn signal" id="btn-ticket">Retirar senha</button>
+        <div id="kiosk-msg"></div>
+        <div id="stub"></div>
+      </div>
+      <div class="operators" id="operators"></div>
+    </section>
+
+    <section class="card waiting">
+      <h2>Fila de espera</h2>
+      <p class="hint">Na ordem em que serão chamadas, segundo a política da fila. Ações executadas como administrador.</p>
+      <div class="table-scroll">
+        <table>
+          <thead><tr><th>#</th><th>Senha</th><th>Prioridade</th><th>Aguardando</th><th>Chamadas perdidas</th><th></th></tr></thead>
+          <tbody id="waiting"></tbody>
+        </table>
+      </div>
+      <div id="waiting-msg"></div>
+    </section>
+
+    <details class="card log">
+      <summary>Requisições à API</summary>
+      <ol id="log"></ol>
+    </details>
+  </main>
+</div>
+
+<script>
+"use strict";
+const API = "/api/v1";
+const STORAGE_KEY = "queueflow.console.v1";
+
+// ---- estado ---------------------------------------------------------------------------
+let env = null;          // { org, admin, queue, location, service, operators: [{id, name, servicePoint, servicePointName}] }
+let current = {};        // operatorId -> entryId em atendimento por aquele operador
+let recentCalls = [];    // [{ticket, dest, at}]
+let queueInfo = null;    // resposta de GET /queues/{id}
+let waiting = [];
+let entryCache = {};     // entryId -> EntryResponse
+let lastBoardKey = null;
+
+function load() {
+  try {
+    const saved = JSON.parse(localStorage.getItem(STORAGE_KEY) || "null");
+    if (saved) ({ env, current = {}, recentCalls = [] } = saved);
+  } catch { /* armazenamento indisponível */ }
+}
+function save() {
+  try { localStorage.setItem(STORAGE_KEY, JSON.stringify({ env, current, recentCalls })); } catch { }
+}
+
+// ---- API ------------------------------------------------------------------------------
+class ApiError extends Error {
+  constructor(status, problem) {
+    super(problem?.detail || problem?.title || `HTTP ${status}`);
+    this.status = status;
+    this.problem = problem;
+  }
+}
+
+/** as: "admin" | "kiosk" | operatorId | null (sem identificação) */
+async function api(method, path, { as = null, body, headers = {} } = {}) {
+  const h = { ...headers };
+  if (body !== undefined) h["Content-Type"] = "application/json";
+  if (env?.org && as) h["X-Organization-Id"] = env.org;
+  if (as === "admin") h["X-Operator-Id"] = env.admin;
+  else if (as === "kiosk") h["X-Client-Channel"] = "console-totem";
+  else if (as) h["X-Operator-Id"] = as;
+
+  const res = await fetch(API + path, { method, headers: h, body: body === undefined ? undefined : JSON.stringify(body) });
+  const text = await res.text();
+  const data = text ? JSON.parse(text) : null;
+  if (method !== "GET" || !res.ok) logRequest(method, path, res.status);
+  if (!res.ok) throw new ApiError(res.status, data);
+  return { status: res.status, data };
+}
+
+function logRequest(method, path, status) {
+  const li = document.createElement("li");
+  const time = new Date().toLocaleTimeString("pt-BR");
+  li.innerHTML = `<span>${time}</span><span class="${status < 400 ? "ok" : "err"}">${status}</span><span>${method} ${esc(path)}</span>`;
+  const log = $("#log");
+  log.prepend(li);
+  while (log.children.length > 80) log.lastChild.remove();
+}
+
+// ---- utilidades -----------------------------------------------------------------------
+const $ = (sel) => document.querySelector(sel);
+/** Troca o conteúdo só quando muda, para não recriar botões sob o cursor durante a atualização automática. */
+function setHtml(el, html) {
+  if (el._html === html) return false;
+  el._html = html;
+  el.innerHTML = html;
+  return true;
+}
+const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+const STATUS_LABEL = { WAITING: "Aguardando", CALLED: "Chamada", IN_SERVICE: "Em atendimento", COMPLETED: "Concluída", CANCELLED: "Cancelada", NO_SHOW: "Não compareceu" };
+const TERMINAL = new Set(["COMPLETED", "CANCELLED", "NO_SHOW"]);
+
+function message(target, text, kind = "err") {
+  const el = typeof target === "string" ? $(target) : target;
+  el.innerHTML = text ? `<div class="msg ${kind}">${esc(text)}</div>` : "";
+  if (text && kind === "ok") setTimeout(() => { if (el.textContent.includes(text)) el.innerHTML = ""; }, 4000);
+}
+
+function errorText(e) {
+  if (e instanceof ApiError) {
+    const prefix = { 401: "Sem identificação", 403: "Sem permissão", 404: "Não encontrado", 409: "Conflito", 422: "Regra de negócio" }[e.status];
+    return prefix ? `${prefix}: ${e.message}` : e.message;
+  }
+  return "Não foi possível falar com a API. Ela está rodando em " + location.origin + "?";
+}
+
+function elapsed(fromIso) {
+  const s = Math.max(0, Math.floor((Date.now() - new Date(fromIso)) / 1000));
+  const m = Math.floor(s / 60);
+  return m >= 60 ? `${Math.floor(m / 60)}h${String(m % 60).padStart(2, "0")}` : `${m}min ${String(s % 60).padStart(2, "0")}s`;
+}
+
+function servicePointName(id) {
+  return env.operators.find((o) => o.servicePoint === id)?.servicePointName ?? "Guichê";
+}
+
+// ---- configuração ---------------------------------------------------------------------
+async function createDemo() {
+  const btn = $("#btn-demo");
+  btn.disabled = true;
+  message("#setup-msg", "Criando…", "ok");
+  try {
+    const name = $("#demo-name").value.trim() || "Clínica Demonstração";
+    const { data: org } = await api("POST", "/organizations", { body: { name, adminName: "Recepção" } });
+    env = { org: org.organizationId, admin: org.adminOperatorId, operators: [] };
+    const { data: loc } = await api("POST", "/locations", { as: "admin", body: { name: "Unidade Centro", timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone || "America/Sao_Paulo" } });
+    const { data: svc } = await api("POST", "/services", { as: "admin", body: { code: "ATENDIMENTO", name: "Atendimento geral" } });
+    const { data: queue } = await api("POST", "/queues", {
+      as: "admin",
+      body: {
+        locationId: loc.id, name: "Atendimento geral", ticketPrefix: "A",
+        policy: { ordering: "PRIORITY_FIFO", callTimeoutSeconds: 60, maxCallAttempts: 2, returnPosition: "KEEP_ORIGINAL",
+                  allowReturnFromService: true, maxConsecutivePriorityCalls: 2 },
+        acceptedServices: [svc.id],
+        classifications: [
+          { code: "PREFERENCIAL", label: "Preferencial", level: 10, restricted: false },
+          { code: "URGENTE", label: "Urgente", level: 50, restricted: true },
+        ],
+      },
+    });
+    Object.assign(env, { location: loc.id, service: svc.id, queue: queue.id });
+    await addOperator("Guichê 1", "Bruno");
+    await addOperator("Guichê 2", "Carla");
+    current = {};
+    recentCalls = [];
+    save();
+    await start();
+  } catch (e) {
+    message("#setup-msg", errorText(e));
+    env = null;
+  } finally {
+    btn.disabled = false;
+  }
+}
+
+async function connectExisting() {
+  const org = $("#ex-org").value.trim(), admin = $("#ex-admin").value.trim(), queue = $("#ex-queue").value.trim();
+  if (!org || !admin || !queue) return message("#connect-msg", "Preencha os três IDs.");
+  env = { org, admin, queue, operators: [] };
+  try {
+    const { data } = await api("GET", `/queues/${queue}`, { as: "admin" });
+    env.location = data.locationId;
+    env.service = data.acceptedServices[0] ?? null;
+    current = {};
+    recentCalls = [];
+    save();
+    await start();
+  } catch (e) {
+    env = null;
+    message("#connect-msg", errorText(e));
+  }
+}
+
+/** Cria um ponto de atendimento e um atendente atribuído à fila. */
+async function addOperator(spName, opName) {
+  const { data: sp } = await api("POST", "/service-points", { as: "admin", body: { locationId: env.location, name: spName } });
+  const { data: op } = await api("POST", "/operators", { as: "admin", body: { name: opName, permissions: ["CALL_ENTRIES"] } });
+  await api("POST", `/operators/${op.id}/assignments`, { as: "admin", body: { queueId: env.queue } });
+  env.operators.push({ id: op.id, name: opName, servicePoint: sp.id, servicePointName: spName });
+  save();
+}
+
+// ---- totem ----------------------------------------------------------------------------
+function renderKioskOptions() {
+  const select = $("#k-priority");
+  select.innerHTML = (queueInfo?.classifications ?? []).map((c) =>
+    `<option value="${esc(c.code)}">${esc(c.label)}${c.restricted ? " (restrita)" : ""}</option>`).join("");
+}
+
+async function takeTicket() {
+  const btn = $("#btn-ticket");
+  btn.disabled = true;
+  message("#kiosk-msg", "");
+  try {
+    const code = $("#k-priority").value;
+    const ref = $("#k-ref").value.trim();
+    const { data } = await api("POST", `/queues/${env.queue}/entries`, {
+      as: $("#k-staff").checked ? "admin" : "kiosk",
+      headers: { "Idempotency-Key": crypto.randomUUID() },
+      body: { serviceId: env.service, priorityClassification: code === "NORMAL" ? null : code, externalReference: ref || null },
+    });
+    $("#k-ref").value = "";
+    $("#stub").innerHTML = `<div class="stub"><div class="meta">${esc(queueInfo.name)}</div>
+      <div class="t">${esc(data.ticket)}</div>
+      <div class="meta">${esc(data.priority.classification)} · ${new Date(data.createdAt).toLocaleTimeString("pt-BR")}<br>Aguarde ser chamado no painel</div></div>`;
+    await refresh();
+  } catch (e) {
+    message("#kiosk-msg", errorText(e));
+  } finally {
+    btn.disabled = false;
+  }
+}
+
+// ---- operadores -----------------------------------------------------------------------
+function renderOperators() {
+  const container = $("#operators");
+  for (const op of env.operators) {
+    const entry = entryCache[current[op.id]];
+    const active = entry && !TERMINAL.has(entry.status);
+    let slot = `<span class="idle">Livre. Chame a próxima senha.</span>`;
+    let actions = `<button class="btn signal" data-act="next" data-op="${op.id}">Chamar próxima</button>`;
+    if (active) {
+      slot = `<div><div class="t">${esc(entry.ticket)}</div><div class="timer" data-timer="${entry.id}"></div></div>
+              <span class="status ${entry.status}">${STATUS_LABEL[entry.status]}</span>`;
+      actions = entry.status === "CALLED"
+        ? `<button class="btn" data-act="start" data-op="${op.id}">Iniciar atendimento</button>
+           <button class="btn warn" data-act="no-show" data-op="${op.id}">Não compareceu</button>`
+        : entry.status === "IN_SERVICE"
+          ? `<button class="btn" data-act="complete" data-op="${op.id}">Concluir</button>
+             <button class="btn ghost" data-act="return" data-op="${op.id}">Devolver à fila</button>`
+          : `<button class="btn signal" data-act="next" data-op="${op.id}">Chamar próxima</button>`;
+    } else if (entry) {
+      slot = `<div><div class="t">${esc(entry.ticket)}</div><div class="timer">Última senha</div></div>
+              <span class="status ${entry.status}">${STATUS_LABEL[entry.status]}</span>`;
+    }
+    let card = container.querySelector(`[data-card="${op.id}"]`);
+    if (!card) {
+      card = document.createElement("article");
+      card.className = "card";
+      card.dataset.card = op.id;
+      card.innerHTML = `<div class="op-head"><strong>${esc(op.servicePointName)}</strong><span>${esc(op.name)}</span></div>
+        <div class="op-body"></div><div data-msg="${op.id}"></div>`;
+      container.append(card);
+    }
+    setHtml(card.querySelector(".op-body"), `<div class="slot">${slot}</div><div class="actions">${actions}</div>`);
+  }
+  tickTimers();
+}
+
+function tickTimers() {
+  document.querySelectorAll("[data-timer]").forEach((el) => {
+    const entry = entryCache[el.dataset.timer];
+    if (!entry) return;
+    if (entry.status === "CALLED") {
+      const left = Math.round((new Date(entry.call.expiresAt) - Date.now()) / 1000);
+      el.textContent = left > 0 ? `Comparecimento em até ${left}s` : "Prazo esgotado: será devolvida à fila";
+      el.classList.toggle("late", left <= 0);
+    } else {
+      el.textContent = "";
+    }
+  });
+}
+
+async function operatorAction(act, opId) {
+  const box = document.querySelector(`[data-msg="${opId}"]`);
+  const entryId = current[opId];
+  try {
+    let res;
+    if (act === "next") {
+      const op = env.operators.find((o) => o.id === opId);
+      res = await api("POST", `/queues/${env.queue}/calls/next`, { as: opId, body: { servicePointId: op.servicePoint } });
+      if (res.status === 204) return message(box, "Ninguém aguardando.", "ok");
+      current[opId] = res.data.id;
+      recentCalls.unshift({ ticket: res.data.ticket, dest: op.servicePointName, at: res.data.call.calledAt });
+      recentCalls = recentCalls.slice(0, 5);
+    } else {
+      res = await api("POST", `/entries/${entryId}/${act}`, { as: opId, body: act === "return" ? { reason: "Devolvida pelo console" } : undefined });
+    }
+    entryCache[res.data.id] = res.data;
+    save();
+    renderOperators();
+    renderBoard();
+    await refresh();
+  } catch (e) {
+    message(box, errorText(e));
+  }
+}
+
+// ---- fila de espera -------------------------------------------------------------------
+function renderWaiting() {
+  const tbody = $("#waiting");
+  if (!waiting.length) {
+    setHtml(tbody, `<tr class="empty-row"><td colspan="6">Fila vazia. Retire uma senha no totem.</td></tr>`);
+    return;
+  }
+  const options = (queueInfo?.classifications ?? []).map((c) => `<option value="${esc(c.code)}">${esc(c.label)}</option>`).join("");
+  setHtml(tbody, waiting.map((e, i) => `<tr>
+      <td class="pos">${i + 1}</td>
+      <td class="tk">${esc(e.ticket)}</td>
+      <td><span class="prio ${e.priority.level > 0 ? "lvl" : ""}">${esc(e.priority.classification)} · ${e.priority.level}</span></td>
+      <td data-since="${esc(e.createdAt)}"></td>
+      <td>${e.missedCalls}</td>
+      <td class="row-actions">
+        <select aria-label="Nova prioridade para ${esc(e.ticket)}" data-prio="${e.id}">
+          <option value="">Alterar prioridade…</option>${options}</select>
+        <button class="btn warn small" data-cancel="${e.id}">Cancelar</button>
+      </td></tr>`).join(""));
+  tickElapsed();
+}
+
+async function changePriority(entryId, code) {
+  try {
+    await api("POST", `/entries/${entryId}/priority`, { as: "admin", body: { priorityClassification: code } });
+    message("#waiting-msg", "Prioridade alterada.", "ok");
+  } catch (e) { message("#waiting-msg", errorText(e)); }
+  await refresh();
+}
+
+async function cancelEntry(entryId) {
+  try {
+    await api("POST", `/entries/${entryId}/cancel`, { as: "admin", body: { reason: "Cancelada pela recepção" } });
+    message("#waiting-msg", "Senha cancelada.", "ok");
+  } catch (e) { message("#waiting-msg", errorText(e)); }
+  await refresh();
+}
+
+// ---- painel ---------------------------------------------------------------------------
+function renderBoard() {
+  const [latest, ...older] = recentCalls;
+  const now = $("#now");
+  if (latest) {
+    $("#now-ticket").textContent = latest.ticket;
+    $("#now-dest").textContent = latest.dest;
+    $("#now-arrow").hidden = false;
+    now.classList.remove("empty");
+    const key = latest.ticket + latest.at;
+    if (lastBoardKey && key !== lastBoardKey) {
+      now.classList.remove("flash");
+      void now.offsetWidth;
+      now.classList.add("flash");
+    }
+    lastBoardKey = key;
+  } else {
+    $("#now-ticket").textContent = "----";
+    $("#now-dest").textContent = "";
+    $("#now-arrow").hidden = true;
+    now.classList.add("empty");
+  }
+  $("#recent").innerHTML = older.length
+    ? older.map((c) => `<li><span>${esc(c.ticket)}</span><span>${esc(c.dest)}</span></li>`).join("")
+    : `<li><span>--</span><span></span></li>`;
+}
+
+function renderMetrics(m) {
+  const fmt = (s) => s == null ? "—" : s < 60 ? `${Math.round(s)}s` : `${Math.floor(s / 60)}min ${Math.round(s % 60)}s`;
+  const items = [["Aguardando", m.waiting], ["Chamadas", m.called], ["Em atendimento", m.inService],
+    ["Concluídas hoje", m.completed], ["Não compareceram", m.noShow], ["Canceladas", m.cancelled],
+    ["Espera média", fmt(m.averageWaitSeconds)], ["Atendimento médio", fmt(m.averageServiceSeconds)]];
+  $("#metrics").innerHTML = items.map(([label, value]) => `<div><b>${value}</b>${label}</div>`).join("");
+}
+
+function renderHeader() {
+  $("#queue-name").textContent = queueInfo.name;
+  const status = $("#queue-status");
+  status.className = "pill " + queueInfo.status;
+  status.textContent = { ACTIVE: "Recebendo senhas", PAUSED: "Pausada", CLOSED: "Encerrada" }[queueInfo.status];
+  const p = queueInfo.policy;
+  $("#queue-policy").textContent = p.ordering === "FIFO" ? "Ordem de chegada"
+    : p.maxConsecutivePriorityCalls > 0 ? `Intercala ${p.maxConsecutivePriorityCalls} prioritárias : 1 normal`
+    : "Prioridade estrita";
+  const toggle = $("#btn-toggle-queue");
+  toggle.hidden = queueInfo.status === "CLOSED";
+  toggle.textContent = queueInfo.status === "ACTIVE" ? "Pausar fila" : "Reabrir fila";
+}
+
+async function toggleQueue() {
+  try {
+    const target = queueInfo.status === "ACTIVE" ? "PAUSED" : "ACTIVE";
+    const { data } = await api("PUT", `/queues/${env.queue}/status`, { as: "admin", body: { status: target } });
+    queueInfo = data;
+    renderHeader();
+  } catch (e) { message("#kiosk-msg", errorText(e)); }
+}
+
+// ---- ciclo de atualização ---------------------------------------------------------------
+async function refresh() {
+  try {
+    const [q, w, m] = await Promise.all([
+      api("GET", `/queues/${env.queue}`, { as: "admin" }),
+      api("GET", `/queues/${env.queue}/entries?limit=50`, { as: "admin" }),
+      api("GET", `/queues/${env.queue}/metrics`, { as: "admin" }),
+    ]);
+    const firstLoad = !queueInfo;
+    queueInfo = q.data;
+    waiting = w.data;
+    if (firstLoad) renderKioskOptions();
+    const ids = [...new Set(Object.values(current))];
+    const entries = await Promise.all(ids.map((id) => api("GET", `/entries/${id}`, { as: "admin" }).then((r) => r.data).catch(() => null)));
+    entries.filter(Boolean).forEach((e) => { entryCache[e.id] = e; });
+    renderHeader();
+    renderWaiting();
+    renderMetrics(m.data);
+    renderOperators();
+  } catch (e) {
+    message("#waiting-msg", errorText(e));
+  }
+}
+
+async function start() {
+  $("#setup").hidden = true;
+  $("#console").hidden = false;
+  queueInfo = null;
+  renderBoard();
+  await refresh();
+}
+
+function showSetup() {
+  $("#console").hidden = true;
+  $("#setup").hidden = false;
+}
+
+// ---- eventos ----------------------------------------------------------------------------
+$("#btn-demo").addEventListener("click", createDemo);
+$("#btn-connect").addEventListener("click", connectExisting);
+$("#btn-ticket").addEventListener("click", takeTicket);
+$("#btn-toggle-queue").addEventListener("click", toggleQueue);
+$("#btn-reset").addEventListener("click", () => {
+  env = null; current = {}; recentCalls = []; save();
+  $("#operators").innerHTML = "";
+  showSetup();
+});
+$("#btn-add-op").addEventListener("click", async () => {
+  const n = env.operators.length + 1;
+  try { await addOperator(`Guichê ${n}`, `Atendente ${n}`); renderOperators(); }
+  catch (e) { message("#kiosk-msg", errorText(e)); }
+});
+$("#operators").addEventListener("click", (ev) => {
+  const btn = ev.target.closest("[data-act]");
+  if (btn) { btn.disabled = true; operatorAction(btn.dataset.act, btn.dataset.op).finally(() => { btn.disabled = false; }); }
+});
+$("#waiting").addEventListener("change", (ev) => {
+  const select = ev.target.closest("[data-prio]");
+  if (select?.value) changePriority(select.dataset.prio, select.value);
+});
+$("#waiting").addEventListener("click", (ev) => {
+  const btn = ev.target.closest("[data-cancel]");
+  if (btn) cancelEntry(btn.dataset.cancel);
+});
+
+function tickElapsed() {
+  document.querySelectorAll("[data-since]").forEach((td) => { td.textContent = elapsed(td.dataset.since); });
+}
+
+setInterval(() => {
+  if (!env || document.hidden) return;
+  tickTimers();
+  tickElapsed();
+}, 1000);
+setInterval(() => { if (env && !document.hidden && !document.activeElement?.matches("select")) refresh(); }, 3000);
+
+load();
+if (env) start(); else showSetup();
+</script>
+</body>
+</html>

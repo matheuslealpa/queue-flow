@@ -22,6 +22,13 @@ docker compose up -d postgres
 mvn -pl api -am spring-boot:run
 ```
 
+### Console web
+
+Com a API no ar, abra **http://localhost:8080/console**. O botão *Criar ambiente de demonstração* cadastra
+organização, fila com prioridades e dois guichês; a partir daí dá para retirar senhas no totem, chamar,
+atender, registrar não comparecimento, alterar prioridades e acompanhar o painel e os indicadores. Os IDs do
+ambiente ficam no `localStorage` do navegador (*Trocar ambiente* limpa).
+
 Testes (os de integração usam Testcontainers e precisam do Docker):
 
 ```bash
