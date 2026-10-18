@@ -1,6 +1,8 @@
 spring:
   application:
     name: queue-flow
+  config:
+    import: classpath:queueflow-infrastructure.yml
   datasource:
     url: ${DB_URL:jdbc:postgresql://localhost:5432/queueflow}
     username: ${DB_USER:queueflow}

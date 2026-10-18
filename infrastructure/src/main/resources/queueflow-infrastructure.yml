@@ -1,0 +1,13 @@
+# Configuração de persistência compartilhada pela aplicação e pelos testes de integração.
+queueflow:
+  database:
+    schema: ${DB_SCHEMA:queueflow}
+
+spring:
+  datasource:
+    hikari:
+      schema: ${queueflow.database.schema}
+  flyway:
+    create-schemas: true
+    schemas: ${queueflow.database.schema}
+    default-schema: ${queueflow.database.schema}
