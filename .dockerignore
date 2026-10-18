@@ -1,0 +1,6 @@
+**/target
+.git
+.idea
+.junie
+out
+*.iml
