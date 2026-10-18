@@ -1,6 +1,6 @@
 target/
 out/
-.idea/workspace.xml
-.idea/shelf/
-*.iml.bak
+.idea/
+*.iml
+.junie/
 .DS_Store
