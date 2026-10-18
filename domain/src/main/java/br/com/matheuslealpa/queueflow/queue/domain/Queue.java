@@ -12,6 +12,7 @@ import br.com.matheuslealpa.queueflow.shared.domain.OrganizationId;
 import br.com.matheuslealpa.queueflow.shared.domain.Permission;
 
 import java.time.Instant;
+import java.util.ArrayList;
 import java.util.Collection;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
@@ -37,10 +38,12 @@ public final class Queue extends AggregateRoot<QueueId> {
     private QueuePolicy policy;
     private final Set<ServiceOfferingId> acceptedServices;
     private final Map<String, PriorityClassification> classifications;
+    /** Chamadas prioritárias seguidas desde a última chamada sem prioridade (usado na intercalação). */
+    private int consecutivePriorityCalls;
 
     private Queue(QueueId id, OrganizationId organizationId, LocationId locationId, String name, String ticketPrefix,
                   QueueStatus status, QueuePolicy policy, Collection<ServiceOfferingId> acceptedServices,
-                  Collection<PriorityClassification> classifications, long version) {
+                  Collection<PriorityClassification> classifications, int consecutivePriorityCalls, long version) {
         super(id, organizationId, version);
         this.locationId = Guards.required(locationId, "locationId");
         this.name = Guards.maxLength(Guards.notBlank(name, "name"), 150, "name");
@@ -51,13 +54,17 @@ public final class Queue extends AggregateRoot<QueueId> {
         this.classifications = new LinkedHashMap<>();
         this.classifications.put(PriorityClassification.NORMAL_CODE, PriorityClassification.NORMAL);
         classifications.forEach(c -> this.classifications.put(c.code(), c));
+        if (consecutivePriorityCalls < 0) {
+            throw new IllegalArgumentException("consecutivePriorityCalls negativo");
+        }
+        this.consecutivePriorityCalls = consecutivePriorityCalls;
     }
 
     public static Queue create(OrganizationId organizationId, LocationId locationId, String name, String ticketPrefix,
                                QueuePolicy policy, Set<ServiceOfferingId> acceptedServices,
                                List<PriorityClassification> classifications, Instant now) {
         var queue = new Queue(QueueId.newId(), organizationId, locationId, name, ticketPrefix, QueueStatus.ACTIVE,
-                policy, acceptedServices, classifications, 0);
+                policy, acceptedServices, classifications, 0, 0);
         queue.registerEvent(new QueueCreated(organizationId, queue.id(), locationId, queue.name,
                 policy.ordering(), now));
         return queue;
@@ -66,9 +73,10 @@ public final class Queue extends AggregateRoot<QueueId> {
     public static Queue restore(QueueId id, OrganizationId organizationId, LocationId locationId, String name,
                                 String ticketPrefix, QueueStatus status, QueuePolicy policy,
                                 Set<ServiceOfferingId> acceptedServices,
-                                List<PriorityClassification> classifications, long version) {
+                                List<PriorityClassification> classifications, int consecutivePriorityCalls,
+                                long version) {
         return new Queue(id, organizationId, locationId, name, ticketPrefix, status, policy, acceptedServices,
-                classifications, version);
+                classifications, consecutivePriorityCalls, version);
     }
 
     // ---- regras de ingresso -------------------------------------------------------------
@@ -113,6 +121,60 @@ public final class Queue extends AggregateRoot<QueueId> {
             throw new NotAuthorizedException(actor, "atribuir a prioridade restrita " + classification.code());
         }
         return classification.toPriority();
+    }
+
+    // ---- seleção e intercalação ---------------------------------------------------------
+
+    /**
+     * Seleções a tentar, em ordem, para encontrar a próxima entrada. Com intercalação, quando o
+     * limite de chamadas prioritárias seguidas foi atingido, tenta primeiro uma entrada sem
+     * prioridade; se não houver, qualquer uma.
+     */
+    public List<EntrySelection> callSelectionPlan() {
+        var any = EntrySelection.any(ordering());
+        if (policy.interleavesPriorities() && consecutivePriorityCalls >= policy.maxConsecutivePriorityCalls()) {
+            return List.of(new EntrySelection(ordering(), PriorityBand.REGULAR), any);
+        }
+        return List.of(any);
+    }
+
+    /**
+     * Registra a prioridade da entrada chamada para controlar a intercalação.
+     *
+     * @return se o estado da fila mudou (e precisa ser persistido)
+     */
+    public boolean registerCall(Priority calledPriority) {
+        if (!policy.interleavesPriorities()) {
+            return false;
+        }
+        var next = calledPriority.level() > 0 ? consecutivePriorityCalls + 1 : 0;
+        if (next == consecutivePriorityCalls) {
+            return false;
+        }
+        consecutivePriorityCalls = next;
+        return true;
+    }
+
+    /**
+     * Projeta a ordem de chamada a partir das entradas com e sem prioridade (cada lista já na
+     * ordem da política), aplicando a intercalação a partir do estado atual da fila.
+     */
+    public <T> List<T> projectCallOrder(List<T> prioritized, List<T> regular) {
+        var limit = policy.maxConsecutivePriorityCalls();
+        var result = new ArrayList<T>(prioritized.size() + regular.size());
+        int i = 0, j = 0, streak = consecutivePriorityCalls;
+        while (i < prioritized.size() || j < regular.size()) {
+            var takeRegular = j < regular.size()
+                    && (i >= prioritized.size() || (limit > 0 && streak >= limit));
+            if (takeRegular) {
+                result.add(regular.get(j++));
+                streak = 0;
+            } else {
+                result.add(prioritized.get(i++));
+                streak++;
+            }
+        }
+        return result;
     }
 
     // ---- ciclo de vida ------------------------------------------------------------------
@@ -220,6 +282,10 @@ public final class Queue extends AggregateRoot<QueueId> {
 
     public EntryOrdering ordering() {
         return policy.ordering().ordering();
+    }
+
+    public int consecutivePriorityCalls() {
+        return consecutivePriorityCalls;
     }
 
     public Set<ServiceOfferingId> acceptedServices() {

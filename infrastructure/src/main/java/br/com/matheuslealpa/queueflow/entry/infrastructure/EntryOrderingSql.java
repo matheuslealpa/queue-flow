@@ -1,6 +1,7 @@
 package br.com.matheuslealpa.queueflow.entry.infrastructure;
 
 import br.com.matheuslealpa.queueflow.queue.domain.EntryOrdering;
+import br.com.matheuslealpa.queueflow.queue.domain.PriorityBand;
 
 import java.util.stream.Collectors;
 
@@ -11,6 +12,14 @@ import java.util.stream.Collectors;
 final class EntryOrderingSql {
 
     private EntryOrderingSql() {
+    }
+
+    static String bandFilter(PriorityBand band) {
+        return switch (band) {
+            case ANY -> "";
+            case PRIORITIZED -> "AND priority_level > 0";
+            case REGULAR -> "AND priority_level = 0";
+        };
     }
 
     static String orderBy(EntryOrdering ordering) {

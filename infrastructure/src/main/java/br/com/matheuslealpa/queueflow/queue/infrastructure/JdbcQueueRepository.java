@@ -30,17 +30,32 @@ public class JdbcQueueRepository implements QueueRepository {
     }
 
     private record Row(UUID id, UUID organizationId, UUID locationId, String name, String ticketPrefix,
-                       QueueStatus status, QueuePolicy policy, long version) {
+                       QueueStatus status, QueuePolicy policy, int consecutivePriorityCalls, long version) {
     }
+
+    private static final String SELECT = """
+            SELECT id, organization_id, location_id, name, ticket_prefix, status, ordering,
+                   call_timeout_seconds, max_call_attempts, return_position, allow_return_from_service,
+                   max_consecutive_priority_calls, consecutive_priority_calls, version
+            FROM queue WHERE organization_id = :org AND id = :id
+            """;
 
     @Override
     public Optional<Queue> findById(OrganizationId organizationId, QueueId queueId) {
-        return jdbc.sql("""
-                        SELECT id, organization_id, location_id, name, ticket_prefix, status, ordering,
-                               call_timeout_seconds, max_call_attempts, return_position, allow_return_from_service,
-                               version
-                        FROM queue WHERE organization_id = :org AND id = :id
-                        """)
+        return find(SELECT, organizationId, queueId);
+    }
+
+    /**
+     * {@code FOR NO KEY UPDATE} serializa as chamadas da fila sem bloquear quem apenas referencia
+     * a fila por chave estrangeira (p.ex. a criação de entradas e do contador de senhas).
+     */
+    @Override
+    public Optional<Queue> lockById(OrganizationId organizationId, QueueId queueId) {
+        return find(SELECT + " FOR NO KEY UPDATE", organizationId, queueId);
+    }
+
+    private Optional<Queue> find(String sql, OrganizationId organizationId, QueueId queueId) {
+        return jdbc.sql(sql)
                 .param("org", organizationId.value())
                 .param("id", queueId.value())
                 .query((rs, n) -> new Row(Jdbc.uuid(rs, "id"), Jdbc.uuid(rs, "organization_id"),
@@ -49,7 +64,9 @@ public class JdbcQueueRepository implements QueueRepository {
                         new QueuePolicy(OrderingStrategy.valueOf(rs.getString("ordering")),
                                 Duration.ofSeconds(rs.getInt("call_timeout_seconds")), rs.getInt("max_call_attempts"),
                                 ReturnPosition.valueOf(rs.getString("return_position")),
-                                rs.getBoolean("allow_return_from_service")),
+                                rs.getBoolean("allow_return_from_service"),
+                                rs.getInt("max_consecutive_priority_calls")),
+                        rs.getInt("consecutive_priority_calls"),
                         rs.getLong("version")))
                 .optional()
                 .map(this::restore);
@@ -70,7 +87,7 @@ public class JdbcQueueRepository implements QueueRepository {
                 .list());
         return Queue.restore(new QueueId(row.id()), new OrganizationId(row.organizationId()),
                 new LocationId(row.locationId()), row.name(), row.ticketPrefix(), row.status(), row.policy(),
-                services, classifications, row.version());
+                services, classifications, row.consecutivePriorityCalls(), row.version());
     }
 
     @Override
@@ -80,15 +97,18 @@ public class JdbcQueueRepository implements QueueRepository {
         var rows = jdbc.sql("""
                         INSERT INTO queue (id, organization_id, location_id, name, ticket_prefix, status, ordering,
                                            call_timeout_seconds, max_call_attempts, return_position,
-                                           allow_return_from_service, version)
+                                           allow_return_from_service, max_consecutive_priority_calls,
+                                           consecutive_priority_calls, version)
                         VALUES (:id, :org, :location, :name, :prefix, :status, :ordering, :timeout, :attempts,
-                                :returnPosition, :allowReturn, :version)
+                                :returnPosition, :allowReturn, :interleaving, :streak, :version)
                         ON CONFLICT (id) DO UPDATE
                             SET name = excluded.name, status = excluded.status, ordering = excluded.ordering,
                                 call_timeout_seconds = excluded.call_timeout_seconds,
                                 max_call_attempts = excluded.max_call_attempts,
                                 return_position = excluded.return_position,
                                 allow_return_from_service = excluded.allow_return_from_service,
+                                max_consecutive_priority_calls = excluded.max_consecutive_priority_calls,
+                                consecutive_priority_calls = excluded.consecutive_priority_calls,
                                 version = queue.version + 1
                             WHERE queue.version = excluded.version AND queue.organization_id = excluded.organization_id
                         """)
@@ -103,6 +123,8 @@ public class JdbcQueueRepository implements QueueRepository {
                 .param("attempts", policy.maxCallAttempts())
                 .param("returnPosition", policy.returnPosition().name())
                 .param("allowReturn", policy.allowReturnFromService())
+                .param("interleaving", policy.maxConsecutivePriorityCalls())
+                .param("streak", queue.consecutivePriorityCalls())
                 .param("version", queue.version())
                 .update();
         Jdbc.requireWritten(rows, "Fila", queue.id());

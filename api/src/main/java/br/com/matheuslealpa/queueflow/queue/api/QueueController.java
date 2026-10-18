@@ -53,7 +53,8 @@ public class QueueController {
                                 @NotNull @Min(10) @Max(3600) Integer callTimeoutSeconds,
                                 @NotNull @Min(1) @Max(20) Integer maxCallAttempts,
                                 @NotNull ReturnPosition returnPosition,
-                                boolean allowReturnFromService) {
+                                boolean allowReturnFromService,
+                                @Min(0) @Max(QueuePolicy.MAX_INTERLEAVING) Integer maxConsecutivePriorityCalls) {
     }
 
     public record ClassificationRequest(@NotBlank @Size(max = 40) String code,
@@ -90,7 +91,8 @@ public class QueueController {
         var view = createQueue.handle(new CreateQueue.Command(context.organizationId(), context.requireOperator(),
                 new LocationId(request.locationId()), request.name(), request.ticketPrefix(),
                 new QueuePolicy(policy.ordering(), Duration.ofSeconds(policy.callTimeoutSeconds()),
-                        policy.maxCallAttempts(), policy.returnPosition(), policy.allowReturnFromService()),
+                        policy.maxCallAttempts(), policy.returnPosition(), policy.allowReturnFromService(),
+                        policy.maxConsecutivePriorityCalls() == null ? 0 : policy.maxConsecutivePriorityCalls()),
                 services, classifications));
         return ResponseEntity.created(URI.create("/api/v1/queues/" + view.id())).body(QueueResponse.of(view));
     }

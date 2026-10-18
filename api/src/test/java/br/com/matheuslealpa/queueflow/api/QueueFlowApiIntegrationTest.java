@@ -14,6 +14,7 @@ import org.springframework.test.web.servlet.request.MockHttpServletRequestBuilde
 
 import java.util.UUID;
 
+import static org.hamcrest.Matchers.contains;
 import static org.hamcrest.Matchers.hasSize;
 import static org.hamcrest.Matchers.startsWith;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
@@ -57,7 +58,8 @@ class QueueFlowApiIntegrationTest {
         queue = id(asAdmin(post("/api/v1/queues"), """
                 {"locationId":"%s","name":"Retirada","ticketPrefix":"R",
                  "policy":{"ordering":"PRIORITY_FIFO","callTimeoutSeconds":120,"maxCallAttempts":2,
-                           "returnPosition":"KEEP_ORIGINAL","allowReturnFromService":true},
+                           "returnPosition":"KEEP_ORIGINAL","allowReturnFromService":true,
+                           "maxConsecutivePriorityCalls":2},
                  "acceptedServices":["%s"],
                  "classifications":[{"code":"PREFERENCIAL","label":"Preferencial","level":10,"restricted":false},
                                     {"code":"URGENTE","label":"Urgente","level":50,"restricted":true}]}
@@ -121,6 +123,25 @@ class QueueFlowApiIntegrationTest {
 
         mvc.perform(asAttendant(post("/api/v1/queues/{id}/calls/next", queue), "{\"servicePointId\":\"%s\"}".formatted(desk)))
                 .andExpect(status().isNoContent());
+    }
+
+    @Test
+    void interleavesTwoPrioritizedForOneRegular() throws Exception {
+        mvc.perform(asOrg(get("/api/v1/queues/{id}", queue)))
+                .andExpect(jsonPath("$.policy.maxConsecutivePriorityCalls").value(2));
+        for (var classification : new String[]{null, null, "PREFERENCIAL", "PREFERENCIAL", "PREFERENCIAL"}) {
+            var body = classification == null ? "{\"serviceId\":\"%s\"}".formatted(service)
+                    : "{\"serviceId\":\"%s\",\"priorityClassification\":\"%s\"}".formatted(service, classification);
+            enqueueFromKiosk(body, null).andExpect(status().isCreated());
+        }
+
+        mvc.perform(asOrg(get("/api/v1/queues/{id}/entries", queue)))
+                .andExpect(jsonPath("$[*].ticket").value(contains("R003", "R004", "R001", "R005", "R002")));
+        for (var expected : new String[]{"R003", "R004", "R001", "R005", "R002"}) {
+            mvc.perform(asAttendant(post("/api/v1/queues/{id}/calls/next", queue),
+                            "{\"servicePointId\":\"%s\"}".formatted(desk)))
+                    .andExpect(jsonPath("$.ticket").value(expected));
+        }
     }
 
     @Test

@@ -3,6 +3,7 @@ package br.com.matheuslealpa.queueflow.entry.infrastructure;
 import br.com.matheuslealpa.queueflow.entry.application.EntryView;
 import br.com.matheuslealpa.queueflow.entry.domain.QueueEntry;
 import br.com.matheuslealpa.queueflow.entry.domain.QueueEntryRepository;
+import br.com.matheuslealpa.queueflow.queue.domain.EntrySelection;
 import br.com.matheuslealpa.queueflow.queue.domain.OrderingStrategy;
 import br.com.matheuslealpa.queueflow.support.PostgresIntegrationTest;
 import org.junit.jupiter.api.Test;
@@ -78,7 +79,7 @@ class CallNextConcurrencyIntegrationTest extends PostgresIntegrationTest {
         var locked = new CountDownLatch(1);
         var release = new CountDownLatch(1);
         var holder = CompletableFuture.supplyAsync(() -> transactions.execute(status -> {
-            var head = entries.lockNextWaiting(tenant.org(), queue, ordering).orElseThrow();
+            var head = entries.lockNextWaiting(tenant.org(), queue, EntrySelection.any(ordering)).orElseThrow();
             locked.countDown();
             await(release);
             return head.id().value();
@@ -86,7 +87,7 @@ class CallNextConcurrencyIntegrationTest extends PostgresIntegrationTest {
         assertThat(locked.await(10, TimeUnit.SECONDS)).isTrue();
 
         var concurrent = CompletableFuture.supplyAsync(() -> transactions.execute(status ->
-                entries.lockNextWaiting(tenant.org(), queue, ordering).map(e -> e.id().value()).orElseThrow()));
+                entries.lockNextWaiting(tenant.org(), queue, EntrySelection.any(ordering)).map(e -> e.id().value()).orElseThrow()));
         var concurrentId = concurrent.get(5, TimeUnit.SECONDS);
         release.countDown();
 
@@ -137,7 +138,7 @@ class CallNextConcurrencyIntegrationTest extends PostgresIntegrationTest {
                 .query(Long.class)
                 .single();
         assertThat(calledInDb).isEqualTo(totalEntries);
-        assertThat(entries.findWaiting(tenant.org(), queue, OrderingStrategy.FIFO.ordering(), 0, 10))
+        assertThat(entries.findWaiting(tenant.org(), queue, EntrySelection.any(OrderingStrategy.FIFO.ordering()), 0, 10))
                 .extracting(QueueEntry::id)
                 .isEmpty();
     }

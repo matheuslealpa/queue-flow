@@ -1,5 +1,6 @@
 package br.com.matheuslealpa.queueflow.entry.application;
 
+import br.com.matheuslealpa.queueflow.entry.domain.QueueEntry;
 import br.com.matheuslealpa.queueflow.entry.domain.QueueEntryRepository;
 import br.com.matheuslealpa.queueflow.operator.application.ActorResolver;
 import br.com.matheuslealpa.queueflow.queue.domain.QueueId;
@@ -18,6 +19,9 @@ import java.util.Optional;
 /**
  * Chama a próxima entrada da fila para um operador. A seleção e a reserva ocorrem na mesma
  * transação, com bloqueio da linha selecionada; operadores concorrentes recebem entradas distintas.
+ *
+ * <p>Com intercalação de prioridades, a fila também é bloqueada: o contador de chamadas
+ * prioritárias seguidas precisa ser lido e atualizado sem que outra chamada intervenha.
  */
 public final class CallNextEntry {
 
@@ -51,18 +55,33 @@ public final class CallNextEntry {
             var org = command.organizationId();
             var queue = queues.findById(org, command.queueId())
                     .orElseThrow(() -> new ResourceNotFoundException("Fila", command.queueId()));
+            if (queue.policy().interleavesPriorities()) {
+                queue = queues.lockById(org, queue.id()).orElseThrow();
+            }
             var servicePoint = servicePoints.findById(org, command.servicePointId())
                     .orElseThrow(() -> new ResourceNotFoundException("Ponto de atendimento", command.servicePointId()));
             var operator = actors.operator(org, command.operatorId());
             queue.ensureAllowsCalls();
             operator.ensureCanServe(queue, servicePoint);
 
-            return entries.lockNextWaiting(org, queue.id(), queue.ordering()).map(entry -> {
-                entry.call(queue, servicePoint.id(), operator.toActor(), clock.instant());
-                entries.save(entry);
-                events.publish(entry.pullEvents());
-                return EntryView.of(entry);
-            });
+            Optional<QueueEntry> next = Optional.empty();
+            for (var selection : queue.callSelectionPlan()) {
+                next = entries.lockNextWaiting(org, queue.id(), selection);
+                if (next.isPresent()) {
+                    break;
+                }
+            }
+            if (next.isEmpty()) {
+                return Optional.<EntryView>empty();
+            }
+            var entry = next.get();
+            entry.call(queue, servicePoint.id(), operator.toActor(), clock.instant());
+            entries.save(entry);
+            if (queue.registerCall(entry.priority())) {
+                queues.save(queue);
+            }
+            events.publish(entry.pullEvents());
+            return Optional.of(EntryView.of(entry));
         });
     }
 }

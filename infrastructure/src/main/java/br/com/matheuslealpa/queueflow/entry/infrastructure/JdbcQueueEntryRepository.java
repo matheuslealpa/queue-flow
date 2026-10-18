@@ -14,7 +14,7 @@ import br.com.matheuslealpa.queueflow.entry.domain.ServiceSession;
 import br.com.matheuslealpa.queueflow.entry.domain.ServiceSessionId;
 import br.com.matheuslealpa.queueflow.entry.domain.SessionOutcome;
 import br.com.matheuslealpa.queueflow.entry.domain.TicketNumber;
-import br.com.matheuslealpa.queueflow.queue.domain.EntryOrdering;
+import br.com.matheuslealpa.queueflow.queue.domain.EntrySelection;
 import br.com.matheuslealpa.queueflow.queue.domain.Priority;
 import br.com.matheuslealpa.queueflow.queue.domain.QueueId;
 import br.com.matheuslealpa.queueflow.service.domain.ServiceOfferingId;
@@ -90,14 +90,15 @@ public class JdbcQueueEntryRepository implements QueueEntryRepository {
      */
     @Override
     public Optional<QueueEntry> lockNextWaiting(OrganizationId organizationId, QueueId queueId,
-                                                EntryOrdering ordering) {
+                                                EntrySelection selection) {
         return single(jdbc.sql("""
                         SELECT %s FROM queue_entry
-                        WHERE organization_id = :org AND queue_id = :queue AND status = 'WAITING'
+                        WHERE organization_id = :org AND queue_id = :queue AND status = 'WAITING' %s
                         %s
                         LIMIT 1
                         FOR UPDATE SKIP LOCKED
-                        """.formatted(COLUMNS, EntryOrderingSql.orderBy(ordering)))
+                        """.formatted(COLUMNS, EntryOrderingSql.bandFilter(selection.band()),
+                        EntryOrderingSql.orderBy(selection.ordering())))
                 .param("org", organizationId.value())
                 .param("queue", queueId.value())
                 .query(ROW)
@@ -105,14 +106,15 @@ public class JdbcQueueEntryRepository implements QueueEntryRepository {
     }
 
     @Override
-    public List<QueueEntry> findWaiting(OrganizationId organizationId, QueueId queueId, EntryOrdering ordering,
+    public List<QueueEntry> findWaiting(OrganizationId organizationId, QueueId queueId, EntrySelection selection,
                                         int offset, int limit) {
         return restore(jdbc.sql("""
                         SELECT %s FROM queue_entry
-                        WHERE organization_id = :org AND queue_id = :queue AND status = 'WAITING'
+                        WHERE organization_id = :org AND queue_id = :queue AND status = 'WAITING' %s
                         %s
                         OFFSET :offset LIMIT :limit
-                        """.formatted(COLUMNS, EntryOrderingSql.orderBy(ordering)))
+                        """.formatted(COLUMNS, EntryOrderingSql.bandFilter(selection.band()),
+                        EntryOrderingSql.orderBy(selection.ordering())))
                 .param("org", organizationId.value())
                 .param("queue", queueId.value())
                 .param("offset", offset)

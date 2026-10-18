@@ -7,6 +7,7 @@ import br.com.matheuslealpa.queueflow.operator.domain.Operator;
 import br.com.matheuslealpa.queueflow.operator.domain.OperatorAssignment;
 import br.com.matheuslealpa.queueflow.queue.domain.OrderingStrategy;
 import br.com.matheuslealpa.queueflow.queue.domain.Queue;
+import br.com.matheuslealpa.queueflow.queue.domain.QueuePolicy;
 import br.com.matheuslealpa.queueflow.servicepoint.domain.ServicePoint;
 import br.com.matheuslealpa.queueflow.shared.application.ResourceNotFoundException;
 import br.com.matheuslealpa.queueflow.shared.domain.BusinessRuleViolationException;
@@ -77,6 +78,35 @@ class CallNextEntryTest {
         enqueueMixed(queue);
 
         assertThat(drain(queue, fx.attendant(queue))).containsExactly("A002", "A004", "A001", "A003");
+    }
+
+    @Test
+    void interleavingCallsOneRegularAfterTwoPrioritized() {
+        var queue = fx.queue(QueuePolicy.defaults(OrderingStrategy.PRIORITY_FIFO).withInterleaving(2));
+        // N = normal, P = preferencial, em ordem de chegada
+        for (var classification : new String[]{null, null, null, "PREFERENCIAL", "PREFERENCIAL", "PREFERENCIAL", "PREFERENCIAL"}) {
+            fx.enqueue(queue, classification);
+            fx.clock.advance(Duration.ofSeconds(10));
+        }
+        // A001..A003 normais; A004..A007 preferenciais
+        var projected = fx.listWaiting.handle(fx.org, queue.id(), 0, 50).stream().map(EntryView::ticket).toList();
+
+        var called = drain(queue, fx.attendant(queue));
+
+        assertThat(called).containsExactly("A004", "A005", "A001", "A006", "A007", "A002", "A003");
+        assertThat(projected).isEqualTo(called);
+    }
+
+    @Test
+    void interleavingProjectionIsPaged() {
+        var queue = fx.queue(QueuePolicy.defaults(OrderingStrategy.PRIORITY_FIFO).withInterleaving(1));
+        for (var classification : new String[]{null, null, "PREFERENCIAL", "PREFERENCIAL"}) {
+            fx.enqueue(queue, classification);
+            fx.clock.advance(Duration.ofSeconds(10));
+        }
+
+        assertThat(fx.listWaiting.handle(fx.org, queue.id(), 1, 2)).extracting(EntryView::ticket)
+                .containsExactly("A001", "A004");
     }
 
     @Test

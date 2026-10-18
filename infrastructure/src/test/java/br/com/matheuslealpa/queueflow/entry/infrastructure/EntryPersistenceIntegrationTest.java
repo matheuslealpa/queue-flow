@@ -14,6 +14,7 @@ import br.com.matheuslealpa.queueflow.entry.domain.QueueEntryId;
 import br.com.matheuslealpa.queueflow.entry.domain.QueueEntryRepository;
 import br.com.matheuslealpa.queueflow.entry.domain.ServiceSession;
 import br.com.matheuslealpa.queueflow.entry.domain.SessionOutcome;
+import br.com.matheuslealpa.queueflow.queue.domain.EntrySelection;
 import br.com.matheuslealpa.queueflow.queue.domain.OrderingStrategy;
 import br.com.matheuslealpa.queueflow.queue.domain.Priority;
 import br.com.matheuslealpa.queueflow.reporting.application.GetQueueMetrics;
@@ -103,8 +104,8 @@ class EntryPersistenceIntegrationTest extends PostgresIntegrationTest {
 
         assertThat(entries.findById(otherOrg, id)).isEmpty();
         assertThat(entries.findById(OrganizationId.newId(), id)).isEmpty();
-        assertThat(entries.findWaiting(otherOrg, queue, OrderingStrategy.FIFO.ordering(), 0, 10)).isEmpty();
-        assertThat(entries.lockNextWaiting(otherOrg, queue, OrderingStrategy.FIFO.ordering())).isEmpty();
+        assertThat(entries.findWaiting(otherOrg, queue, EntrySelection.any(OrderingStrategy.FIFO.ordering()), 0, 10)).isEmpty();
+        assertThat(entries.lockNextWaiting(otherOrg, queue, EntrySelection.any(OrderingStrategy.FIFO.ordering()))).isEmpty();
         assertThat(entries.findById(tenant.org(), id)).isPresent();
     }
 

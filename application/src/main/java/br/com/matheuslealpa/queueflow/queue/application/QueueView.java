@@ -21,6 +21,7 @@ public record QueueView(UUID id,
                         int maxCallAttempts,
                         ReturnPosition returnPosition,
                         boolean allowReturnFromService,
+                        int maxConsecutivePriorityCalls,
                         List<UUID> acceptedServices,
                         List<Classification> classifications) {
 
@@ -32,6 +33,7 @@ public record QueueView(UUID id,
         return new QueueView(queue.id().value(), queue.organizationId().value(), queue.locationId().value(),
                 queue.name(), queue.ticketPrefix(), queue.status(), policy.ordering(), policy.callTimeout(),
                 policy.maxCallAttempts(), policy.returnPosition(), policy.allowReturnFromService(),
+                policy.maxConsecutivePriorityCalls(),
                 queue.acceptedServices().stream().map(ServiceOfferingId::value).sorted().toList(),
                 queue.classifications().stream()
                         .map(c -> new Classification(c.code(), c.label(), c.level(), c.restricted()))
