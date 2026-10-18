@@ -1,0 +1,32 @@
+spring:
+  application:
+    name: queue-flow
+  datasource:
+    url: ${DB_URL:jdbc:postgresql://localhost:5432/queueflow}
+    username: ${DB_USER:queueflow}
+    password: ${DB_PASSWORD:queueflow}
+    hikari:
+      maximum-pool-size: ${DB_POOL_SIZE:20}
+  threads:
+    virtual:
+      enabled: true
+  mvc:
+    problemdetails:
+      enabled: true
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info
+  endpoint:
+    health:
+      probes:
+        enabled: true
+
+queueflow:
+  calls:
+    expiration:
+      enabled: true
+      interval: PT15S
+      batch-size: 200
