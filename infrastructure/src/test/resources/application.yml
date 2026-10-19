@@ -1,3 +1,8 @@
 spring:
   config:
     import: classpath:queueflow-infrastructure.yml
+
+# Eventos em memória: só o teste do Redis sobe um contêiner (RedisQueueEventBrokerIntegrationTest)
+queueflow:
+  events:
+    broker: local

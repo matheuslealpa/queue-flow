@@ -1,4 +1,4 @@
-# Configuração de persistência compartilhada pela aplicação e pelos testes de integração.
+# Configuração de persistência e eventos compartilhada pela aplicação e pelos testes de integração.
 queueflow:
   database:
     schema: ${DB_SCHEMA:queueflow}
@@ -11,3 +11,10 @@ spring:
     create-schemas: true
     schemas: ${queueflow.database.schema}
     default-schema: ${queueflow.database.schema}
+  data:
+    redis:
+      host: ${REDIS_HOST:localhost}
+      port: ${REDIS_PORT:6379}
+      # a publicação acontece no fim da requisição: com o Redis fora, falha rápido e entrega localmente
+      timeout: 2s
+      connect-timeout: 2s

@@ -1,6 +1,6 @@
 # Ambiente local do QueueFlow.
-#   docker compose up -d postgres      -> apenas o banco (para rodar a API pela IDE / mvn)
-#   docker compose up -d --build       -> banco + API em http://localhost:8080
+#   docker compose up -d postgres redis -> banco e Redis (para rodar a API pela IDE / mvn)
+#   docker compose up -d --build       -> banco + Redis + API em http://localhost:8080
 services:
   postgres:
     image: postgres:17-alpine
@@ -18,15 +18,30 @@ services:
       timeout: 3s
       retries: 10
 
+  # Pub/Sub dos eventos de fila (SSE) entre instâncias da API; nada é persistido
+  redis:
+    image: redis:8-alpine
+    command: ["redis-server", "--save", "", "--appendonly", "no"]
+    ports:
+      - "${REDIS_PORT:-6379}:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
   api:
     build: .
     depends_on:
       postgres:
         condition: service_healthy
+      redis:
+        condition: service_healthy
     environment:
       DB_URL: jdbc:postgresql://postgres:5432/queueflow
       DB_USER: ${POSTGRES_USER:-queueflow}
       DB_PASSWORD: ${POSTGRES_PASSWORD:-queueflow}
+      REDIS_HOST: redis
     ports:
       - "${API_PORT:-8080}:8080"
     restart: unless-stopped

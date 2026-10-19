@@ -27,6 +27,12 @@ management:
         enabled: true
 
 queueflow:
+  events:
+    # redis: Pub/Sub entre instâncias | local: só em memória (instância única, sem Redis)
+    broker: ${EVENTS_BROKER:redis}
+    # conexões SSE são renovadas pelo cliente após esse tempo; o heartbeat mantém proxies abertos
+    stream-timeout: PT30M
+    heartbeat: PT20S
   calls:
     expiration:
       enabled: true

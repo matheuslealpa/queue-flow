@@ -27,7 +27,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 /**
  * Fluxo HTTP completo contra a aplicação real (PostgreSQL via Testcontainers).
  */
-@SpringBootTest(properties = "queueflow.calls.expiration.enabled=false")
+@SpringBootTest(properties = {"queueflow.calls.expiration.enabled=false", "queueflow.events.broker=local"})
 @AutoConfigureMockMvc
 @Import(TestcontainersConfiguration.class)
 class QueueFlowApiIntegrationTest {

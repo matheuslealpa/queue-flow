@@ -21,6 +21,7 @@ import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Pattern;
 import jakarta.validation.constraints.Size;
+import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -29,6 +30,7 @@ import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 
 import java.net.URI;
 import java.time.Duration;
@@ -70,13 +72,15 @@ public class QueueController {
     private final GetQueue getQueue;
     private final ChangeQueueStatus changeQueueStatus;
     private final GetQueueMetrics getQueueMetrics;
+    private final QueueEventStreams eventStreams;
 
     public QueueController(CreateQueue createQueue, GetQueue getQueue, ChangeQueueStatus changeQueueStatus,
-                           GetQueueMetrics getQueueMetrics) {
+                           GetQueueMetrics getQueueMetrics, QueueEventStreams eventStreams) {
         this.createQueue = createQueue;
         this.getQueue = getQueue;
         this.changeQueueStatus = changeQueueStatus;
         this.getQueueMetrics = getQueueMetrics;
+        this.eventStreams = eventStreams;
     }
 
     @PostMapping
@@ -107,6 +111,17 @@ public class QueueController {
                                @Valid @RequestBody ChangeStatusRequest request) {
         return QueueResponse.of(changeQueueStatus.handle(new ChangeQueueStatus.Command(context.organizationId(),
                 context.requireOperator(), new QueueId(queueId), request.status())));
+    }
+
+    /**
+     * Mudanças na fila em tempo real (Server-Sent Events). Mesma identificação das demais rotas;
+     * a fila é consultada antes para validar existência e organização.
+     */
+    @GetMapping(path = "/{queueId}/events", produces = MediaType.TEXT_EVENT_STREAM_VALUE)
+    SseEmitter events(RequestContext context, @PathVariable UUID queueId) {
+        var id = new QueueId(queueId);
+        getQueue.handle(context.organizationId(), id);
+        return eventStreams.open(context.organizationId(), id);
     }
 
     @GetMapping("/{queueId}/metrics")
