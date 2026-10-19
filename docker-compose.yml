@@ -1,6 +1,6 @@
 # Ambiente local do QueueFlow.
 #   docker compose up -d postgres redis -> banco e Redis (para rodar a API pela IDE / mvn)
-#   docker compose up -d --build       -> banco + Redis + API em http://localhost:8080
+#   docker compose up -d --build       -> banco + API em http://localhost:8080 + web em http://localhost:4200
 services:
   postgres:
     image: postgres:17-alpine
@@ -44,6 +44,14 @@ services:
       REDIS_HOST: redis
     ports:
       - "${API_PORT:-8080}:8080"
+    restart: unless-stopped
+
+  web:
+    build: ./web
+    depends_on:
+      - api
+    ports:
+      - "${WEB_PORT:-4200}:80"
     restart: unless-stopped
 
 volumes:

@@ -16,7 +16,7 @@ API genérica de gerenciamento de filas de atendimento (farmácias, clínicas, l
 Pré-requisitos: JDK 25, Maven 3.9+, Docker.
 
 ```bash
-docker compose up -d --build        # PostgreSQL + Redis + API em http://localhost:8080
+docker compose up -d --build        # PostgreSQL + Redis + API em http://localhost:8080 + web em :4200
 # ou: banco e Redis no Docker, API pela IDE / Maven
 docker compose up -d postgres redis
 mvn -pl api -am spring-boot:run
@@ -37,6 +37,25 @@ mvn verify
 ```
 
 Variáveis: `DB_URL`, `DB_USER`, `DB_PASSWORD`, `DB_POOL_SIZE`; no compose, `POSTGRES_PORT` e `API_PORT`.
+
+### Frontend (`web/`)
+
+Aplicação Angular 22 (standalone, zoneless, signals) com [spartan/ui](https://spartan.ng) e Tailwind v4. Telas:
+fila (`/admin`), guichê (`/operador/:id`), totem (`/totem`), painel para TV (`/painel`), configurações e setup.
+Requer Node 24 LTS (ver `web/.nvmrc`) e pnpm (`corepack enable pnpm`).
+
+```bash
+cd web
+pnpm install
+pnpm start        # http://localhost:4200, com /api repassado para localhost:8080
+pnpm test         # Vitest
+```
+
+Pelo compose, `docker compose up -d --build` também sobe o front em **http://localhost:4200** (nginx).
+
+As telas acompanham a fila em tempo real (SSE, ver abaixo) e só voltam a consultar por polling enquanto a conexão
+estiver caída; o indicador no rodapé do menu mostra o estado. Como a API ainda não lista organizações, filas e
+guichês, esses IDs ficam no `localStorage`; o JSON em *Configurações* leva o ambiente para outro navegador.
 
 ## Eventos em tempo real (SSE)
 

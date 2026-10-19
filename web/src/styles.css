@@ -1,0 +1,110 @@
+@layer theme, base, components, utilities;
+@import 'tailwindcss/theme.css' layer(theme);
+@import 'tailwindcss/preflight.css' layer(base);
+@import 'tailwindcss/utilities.css';
+
+@import "@spartan-ng/brain/hlm-tailwind-preset.css";
+
+/*
+ * Paleta herdada do console de demonstração (api/src/main/resources/static/console):
+ * mineral/papel/tinta para a operação e o azul-painel com amarelo-sinal para as telas públicas.
+ */
+:root {
+  color-scheme: light;
+
+  --font-sans: "Public Sans", ui-sans-serif, system-ui, sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, monospace;
+  --font-display: "Doto", var(--font-mono);
+
+  --radius: 0.5rem;
+  --background: #E7EAEE;
+  --foreground: #172433;
+  --card: #F7F8FA;
+  --card-foreground: #172433;
+  --popover: #F7F8FA;
+  --popover-foreground: #172433;
+  --primary: #172433;
+  --primary-foreground: #F7F8FA;
+  --secondary: #DDE2E8;
+  --secondary-foreground: #172433;
+  --muted: #DDE2E8;
+  --muted-foreground: #55657A;
+  --accent: #DDE2E8;
+  --accent-foreground: #172433;
+  --destructive: #D2452F;
+  --border: #CDD3DB;
+  --input: #CDD3DB;
+  --ring: #55657A;
+  --chart-1: #14243A;
+  --chart-2: #1E7A6C;
+  --chart-3: #F4C430;
+  --chart-4: #D2452F;
+  --chart-5: #8A96A6;
+  --sidebar: #14243A;
+  --sidebar-foreground: #C9D2DD;
+  --sidebar-primary: #F4C430;
+  --sidebar-primary-foreground: #14243A;
+  --sidebar-accent: #1F3450;
+  --sidebar-accent-foreground: #F7F8FA;
+  --sidebar-border: #24395A;
+  --sidebar-ring: #F4C430;
+
+  /* estados de uma senha */
+  --signal: #F4C430;
+  --signal-foreground: #14243A;
+  --called: #D2452F;
+  --serving: #1E7A6C;
+  --done: #8A96A6;
+  --board: #14243A;
+  --board-deep: #0D1828;
+}
+
+:root.dark {
+  color-scheme: dark;
+
+  --background: #0D1828;
+  --foreground: #E7EAEE;
+  --card: #14243A;
+  --card-foreground: #E7EAEE;
+  --popover: #14243A;
+  --popover-foreground: #E7EAEE;
+  --primary: #E7EAEE;
+  --primary-foreground: #14243A;
+  --secondary: #1F3450;
+  --secondary-foreground: #E7EAEE;
+  --muted: #1F3450;
+  --muted-foreground: #9AA8BA;
+  --accent: #1F3450;
+  --accent-foreground: #E7EAEE;
+  --destructive: #E8664F;
+  --border: #24395A;
+  --input: #2C4466;
+  --ring: #9AA8BA;
+  --sidebar: #0A131F;
+  --sidebar-foreground: #C9D2DD;
+  --sidebar-accent: #172A44;
+  --sidebar-border: #1A2C46;
+
+  --called: #E8664F;
+  --serving: #2E9C8A;
+}
+
+@theme inline {
+  --font-display: var(--font-display);
+  --color-signal: var(--signal);
+  --color-signal-foreground: var(--signal-foreground);
+  --color-called: var(--called);
+  --color-serving: var(--serving);
+  --color-done: var(--done);
+  --color-board: var(--board);
+  --color-board-deep: var(--board-deep);
+}
+
+@layer base {
+  * {
+    @apply border-border outline-ring/50;
+  }
+  body {
+    @apply bg-background text-foreground font-sans antialiased;
+  }
+}
